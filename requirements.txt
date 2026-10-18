@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+asyncpg>=0.29
+PyJWT>=2.8
+sentence-transformers>=2.6
+pgvector>=0.3
+numpy>=1.24

@@ -2,4 +2,5 @@
 # This installs the package in editable mode with all runtime dependencies.
 #
 # Offline / local embeddings (no API key):  pip install -e ".[local]"
+# Development tools (lint, types, tests):   pip install -e ".[dev]"
 -e .

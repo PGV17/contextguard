@@ -1,4 +1,4 @@
-"""RAG orchestration: embed -> retrieve -> threshold -> synthesize -> audit."""
+"""RAG orchestration: embed -> retrieve -> fuse/re-rank -> synthesize -> audit."""
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.core.exceptions import ValidationFailedError
+from app.core.metrics import INSUFFICIENT_CONTEXT, RETRIEVED_CHUNKS
 from app.core.security import CurrentUser
 from app.repositories.audit import AuditRepository
-from app.repositories.chunks import ChunkMatch, ChunkRepository
+from app.repositories.chunks import ChunkMatch
 from app.services.embeddings import EmbeddingService
 from app.services.llm import INSUFFICIENT_CONTEXT_MESSAGE, ContextBlock, LLMService
+from app.services.retrieval import RetrievalService
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +50,13 @@ class RagService:
     def __init__(
         self,
         *,
-        chunks: ChunkRepository,
+        retrieval: RetrievalService,
         audits: AuditRepository,
         embeddings: EmbeddingService,
         llm: LLMService,
         settings: Settings,
     ) -> None:
-        self._chunks = chunks
+        self._retrieval = retrieval
         self._audits = audits
         self._embeddings = embeddings
         self._llm = llm
@@ -73,19 +75,16 @@ class RagService:
 
         limit = self._resolve_limit(top_k)
 
-        # 1) Embed the question locally or via the configured provider.
+        # 1) Embed the question (the only step that talks to a provider).
         query_embedding = await self._embeddings.embed_query(question)
 
-        # 2) Retrieve only rows this principal may read; the RLS predicate and
-        #    the similarity threshold both execute inside PostgreSQL.
-        matches = await self._chunks.similarity_search(
+        # 2) Retrieve only rows this principal may read; RLS, the similarity
+        #    threshold, hybrid fusion and re-ranking all happen here.
+        matches = await self._retrieval.retrieve(
+            question=question,
             query_embedding=query_embedding,
-            department=user.department,
-            clearance_level=user.clearance,
-            public_department=self._settings.public_department,
+            user=user,
             limit=limit,
-            min_similarity=self._settings.retrieval_min_similarity,
-            hnsw_ef_search=self._settings.hnsw_ef_search,
         )
 
         context = self._build_context(matches)
@@ -93,6 +92,7 @@ class RagService:
             "retrieval completed",
             extra={
                 "username": user.username,
+                "role": user.role,
                 "department": user.department,
                 "clearance": user.clearance,
                 "limit": limit,
@@ -101,16 +101,13 @@ class RagService:
                 "context_chunks": len(context),
             },
         )
+        RETRIEVED_CHUNKS.labels(department=user.department).inc(len(context))
 
         # 3) Nothing cleared the threshold: answer safely without an LLM call.
         if not context:
-            await self._audits.record(
-                username=user.username,
-                department=user.department,
-                clearance_level=user.clearance,
-                query=question,
-                retrieved_chunk_ids=[],
-                results_found=False,
+            INSUFFICIENT_CONTEXT.labels(department=user.department).inc()
+            await self._record(
+                user=user, query=question, chunk_ids=[], results_found=False,
                 response=INSUFFICIENT_CONTEXT_MESSAGE,
             )
             return RagResult(
@@ -126,28 +123,20 @@ class RagService:
             answer_text = await self._llm.synthesize(question=question, context=context)
         except Exception:
             logger.exception("llm synthesis failed", extra={"username": user.username})
-            await self._audits.record(
-                username=user.username,
-                department=user.department,
-                clearance_level=user.clearance,
-                query=question,
-                retrieved_chunk_ids=[block.chunk_id for block in context],
-                results_found=True,
-                response=None,
+            await self._record(
+                user=user, query=question,
+                chunk_ids=[block.chunk_id for block in context],
+                results_found=True, response=None,
             )
             raise
 
         cited = resolve_citations(answer_text, context)
 
         # 5) Audit the full interaction: query, permitted chunk ids, response.
-        await self._audits.record(
-            username=user.username,
-            department=user.department,
-            clearance_level=user.clearance,
-            query=question,
-            retrieved_chunk_ids=[block.chunk_id for block in context],
-            results_found=True,
-            response=answer_text,
+        await self._record(
+            user=user, query=question,
+            chunk_ids=[block.chunk_id for block in context],
+            results_found=True, response=answer_text,
         )
 
         return RagResult(
@@ -155,6 +144,26 @@ class RagService:
             cited=cited,
             retrieved_chunks=len(context),
             model=self._llm.model_name,
+        )
+
+    async def _record(
+        self,
+        *,
+        user: CurrentUser,
+        query: str,
+        chunk_ids: list[int],
+        results_found: bool,
+        response: str | None,
+    ) -> None:
+        await self._audits.record(
+            username=user.username,
+            department=user.department,
+            clearance_level=user.clearance,
+            role=user.role,
+            query=query,
+            retrieved_chunk_ids=chunk_ids,
+            results_found=results_found,
+            response=response,
         )
 
     def _resolve_limit(self, top_k: int | None) -> int:

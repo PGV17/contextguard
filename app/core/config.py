@@ -68,8 +68,15 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(default=5, ge=1, le=50)
     retrieval_max_top_k: int = Field(default=20, ge=1, le=50)
     retrieval_min_similarity: float = Field(default=0.65, ge=0.0, le=1.0)
+    retrieval_pool_size: int = Field(default=20, ge=1, le=100)
     public_department: str = Field(default="All", min_length=1, max_length=64)
     max_context_characters: int = Field(default=8000, ge=500)
+
+    # --- Hybrid retrieval & re-ranking --------------------------------------
+    hybrid_enabled: bool = True
+    hybrid_rrf_k: int = Field(default=60, ge=1, le=1000)
+    reranker_enabled: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # --- Ingestion ----------------------------------------------------------
     chunk_size: int = Field(default=1000, ge=100, le=4000)

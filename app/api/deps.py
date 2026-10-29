@@ -18,10 +18,14 @@ from app.core.exceptions import AuthenticationError
 from app.core.security import CurrentUser, decode_access_token
 from app.repositories.audit import AuditRepository
 from app.repositories.chunks import ChunkRepository
+from app.repositories.users import UserRepository
+from app.services.authorization import ensure_admin
 from app.services.embeddings import EmbeddingService
 from app.services.ingestion import IngestionService
 from app.services.llm import LLMService
 from app.services.rag import RagService
+from app.services.reranking import RerankService
+from app.services.retrieval import RetrievalService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
@@ -48,6 +52,12 @@ async def get_current_user(
     return decode_access_token(token, settings)
 
 
+def require_admin(user: CurrentUserDep) -> CurrentUser:
+    """Dependency gate for admin-only endpoints."""
+    ensure_admin(user)
+    return user
+
+
 def get_embedding_service(request: Request) -> EmbeddingService:
     return request.app.state.embedding_service
 
@@ -56,13 +66,22 @@ def get_llm_service(request: Request) -> LLMService:
     return request.app.state.llm_service
 
 
+def get_reranker(request: Request) -> RerankService | None:
+    return request.app.state.reranker
+
+
 def get_rag_service(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> RagService:
-    return RagService(
+    retrieval = RetrievalService(
         chunks=ChunkRepository(session),
+        reranker=request.app.state.reranker,
+        settings=settings,
+    )
+    return RagService(
+        retrieval=retrieval,
         audits=AuditRepository(session),
         embeddings=request.app.state.embedding_service,
         llm=request.app.state.llm_service,
@@ -82,8 +101,14 @@ def get_ingestion_service(
     )
 
 
+def get_user_repository(session: SessionDep) -> UserRepository:
+    return UserRepository(session)
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
+AdminDep = Annotated[CurrentUser, Depends(require_admin)]
+UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
 IngestionServiceDep = Annotated[IngestionService, Depends(get_ingestion_service)]

@@ -8,7 +8,6 @@ from uuid import uuid4
 
 from app.core.config import Settings
 from app.core.exceptions import (
-    PermissionDeniedError,
     UpstreamServiceError,
     ValidationFailedError,
 )
@@ -16,6 +15,7 @@ from app.core.security import CurrentUser
 from app.db.models import DocumentChunk
 from app.repositories.chunks import ChunkRepository
 from app.schemas.documents import IngestRequest
+from app.services.authorization import authorize_ingestion
 from app.services.chunking import split_text
 from app.services.embeddings import EmbeddingService
 
@@ -46,7 +46,12 @@ class IngestionService:
     async def ingest(
         self, *, payload: IngestRequest, user: CurrentUser
     ) -> IngestionResult:
-        self._authorize(payload=payload, user=user)
+        authorize_ingestion(
+            user=user,
+            department=payload.department_allowed,
+            clearance_level=payload.clearance_level,
+            settings=self._settings,
+        )
 
         text = payload.content.strip()
         if not text:
@@ -111,23 +116,3 @@ class IngestionService:
             chunk_ids=chunk_ids,
             embedding_model=self._embeddings.model_name,
         )
-
-    def _authorize(self, *, payload: IngestRequest, user: CurrentUser) -> None:
-        """Least-privilege ingestion policy.
-
-        A user may only create documents for their own department, at or below
-        their own clearance. Public ('All') and cross-department documents are
-        reserved for the trusted seed/administrative path.
-        """
-        if user.clearance < self._settings.ingest_min_clearance:
-            raise PermissionDeniedError(
-                "Your clearance level does not allow document ingestion."
-            )
-        if payload.department_allowed != user.department:
-            raise PermissionDeniedError(
-                "You may only ingest documents for your own department."
-            )
-        if payload.clearance_level > user.clearance:
-            raise PermissionDeniedError(
-                "You may not create documents above your own clearance level."
-            )

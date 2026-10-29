@@ -22,6 +22,10 @@ class CurrentUser:
     username: str
     department: str
     clearance: int
+    role: str
+
+
+ROLES: tuple[str, ...] = ("viewer", "editor", "admin")
 
 
 def create_access_token(
@@ -29,6 +33,7 @@ def create_access_token(
     username: str,
     department: str,
     clearance: int,
+    role: str,
     settings: Settings,
 ) -> str:
     """Issue a signed access token carrying the principal's permissions."""
@@ -37,6 +42,7 @@ def create_access_token(
         "sub": username,
         "department": department,
         "clearance": clearance,
+        "role": role,
         "type": "access",
         "iat": now,
         "exp": now + timedelta(minutes=settings.access_token_expire_minutes),
@@ -51,7 +57,7 @@ def decode_access_token(token: str, settings: Settings) -> CurrentUser:
             token,
             settings.secret_key,
             algorithms=[settings.jwt_algorithm],
-            options={"require": ["sub", "department", "clearance", "exp"]},
+            options={"require": ["sub", "department", "clearance", "role", "exp"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise AuthenticationError("The access token has expired.") from exc
@@ -63,13 +69,17 @@ def decode_access_token(token: str, settings: Settings) -> CurrentUser:
 
     department = payload.get("department")
     clearance = payload.get("clearance")
+    role = payload.get("role")
     if not isinstance(department, str) or not department:
         raise AuthenticationError("The token is missing a valid department claim.")
     if isinstance(clearance, bool) or not isinstance(clearance, int) or clearance < 1:
         raise AuthenticationError("The token is missing a valid clearance claim.")
+    if role not in ROLES:
+        raise AuthenticationError("The token is missing a valid role claim.")
 
     return CurrentUser(
         username=str(payload["sub"]),
         department=department,
         clearance=clearance,
+        role=role,
     )

@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from app.api.routers import auth, chat, documents, health
+from app.api.routers import auth, chat, documents, health, metrics
 from app.core.config import DEFAULT_SECRET_KEY, Settings, get_settings
 from app.core.exceptions import ConfigurationError, register_exception_handlers
 from app.core.logging import configure_logging
@@ -22,6 +22,7 @@ from app.db.health import verify_database_schema
 from app.db.session import create_engine, create_session_factory
 from app.services.embeddings import create_embedding_service
 from app.services.llm import create_llm_service
+from app.services.reranking import create_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.session_factory = create_session_factory(engine)
             application.state.embedding_service = create_embedding_service(settings)
             application.state.llm_service = create_llm_service(settings)
+            application.state.reranker = create_reranker(settings)
 
             logger.info(
                 "ContextGuard started",
@@ -53,6 +55,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "embedding_provider": settings.embedding_provider,
                     "embedding_dimensions": settings.vector_dimensions,
                     "llm_provider": settings.llm_provider,
+                "hybrid_enabled": settings.hybrid_enabled,
+                "reranker_enabled": settings.reranker_enabled,
                 },
             )
             yield
@@ -75,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(application)
 
     application.include_router(health.router, prefix="/health", tags=["operations"])
+    application.include_router(metrics.router, prefix="/metrics", tags=["operations"])
     application.include_router(auth.router, prefix="/auth", tags=["authentication"])
     application.include_router(documents.router, prefix="/documents", tags=["documents"])
     application.include_router(chat.router, prefix="/chat", tags=["chat"])

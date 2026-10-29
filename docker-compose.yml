@@ -16,5 +16,27 @@ services:
       timeout: 5s
       retries: 12
 
+  # Optional containerised API:  docker compose --profile app up -d --build
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CG_DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/rag_db
+      CG_ENVIRONMENT: production
+      CG_SECRET_KEY: ${CG_SECRET_KEY:-change-me-in-production-0123456789abcdef}
+      CG_OPENAI_API_KEY: ${CG_OPENAI_API_KEY:-}
+      CG_EMBEDDING_PROVIDER: ${CG_EMBEDDING_PROVIDER:-openai}
+      CG_LLM_PROVIDER: ${CG_LLM_PROVIDER:-openai}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
 volumes:
   pgdata:

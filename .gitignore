@@ -3,24 +3,32 @@
 venv/
 env/
 
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 build/
 dist/
+.eggs/
+
+# Test / lint / type-check caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-# Secrets / local config
-.env
-.env.*
+.coverage
+.coverage.*
+htmlcov/
 
 # IDE / editor
 .vscode/
 .idea/
 *.swp
+*.swo
 
 # OS
 .DS_Store

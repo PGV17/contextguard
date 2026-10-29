@@ -1,7 +1,5 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-asyncpg>=0.29
-PyJWT>=2.8
-sentence-transformers>=2.6
-pgvector>=0.3
-numpy>=1.24
+# Runtime dependencies are declared in pyproject.toml.
+# This installs the package in editable mode with all runtime dependencies.
+#
+# Offline / local embeddings (no API key):  pip install -e ".[local]"
+-e .

@@ -22,6 +22,15 @@ from app.db.models import AuditLog
 from app.db.session import create_engine, create_session_factory
 
 
+def _format_hash(value: str | None) -> str:
+    """Return a short, display-safe rendering of an entry hash.
+
+    Legacy rows (pre-hash-chain migration) hold no digest, so they render as
+    ``legacy`` instead of crashing with a ``TypeError`` when sliced.
+    """
+    return value[:16] if value else "legacy"
+
+
 async def verify() -> bool:
     settings = get_settings()
     configure_logging("WARNING")
@@ -59,7 +68,7 @@ async def verify() -> bool:
                 username=row.username,
                 department=row.department,
                 clearance_level=row.clearance_level,
-                role=row.role or "unknown",
+                role=row.role if row.role is not None else "",
                 query=row.query,
                 retrieved_chunk_ids=list(row.retrieved_chunk_ids or []),
                 results_found=bool(row.results_found),
@@ -80,7 +89,7 @@ async def verify() -> bool:
         latest = rows[-1]
         print(
             f"OK: {len(rows)} entries verified. Latest entry id={latest.id} "
-            f"hash={latest.entry_hash[:16]}..."
+            f"hash={_format_hash(latest.entry_hash)}..."
         )
         return True
     finally:

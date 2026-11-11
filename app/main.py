@@ -14,7 +14,11 @@ import uvicorn
 from fastapi import FastAPI
 
 from app.api.routers import auth, chat, documents, health, metrics
-from app.core.config import DEFAULT_SECRET_KEY, Settings, get_settings
+from app.core.config import (
+    KNOWN_PLACEHOLDER_SECRETS,
+    Settings,
+    get_settings,
+)
 from app.core.exceptions import ConfigurationError, register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
@@ -34,7 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        if settings.is_production and settings.secret_key == DEFAULT_SECRET_KEY:
+        if settings.is_production and settings.secret_key in KNOWN_PLACEHOLDER_SECRETS:
             raise ConfigurationError(
                 "CG_SECRET_KEY must be overridden with a strong secret in production."
             )

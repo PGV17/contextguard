@@ -25,7 +25,7 @@ services:
     environment:
       CG_DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/rag_db
       CG_ENVIRONMENT: production
-      CG_SECRET_KEY: ${CG_SECRET_KEY:-change-me-in-production-0123456789abcdef}
+      CG_SECRET_KEY: ${CG_SECRET_KEY:?CG_SECRET_KEY must be set explicitly in production}
       CG_OPENAI_API_KEY: ${CG_OPENAI_API_KEY:-}
       CG_EMBEDDING_PROVIDER: ${CG_EMBEDDING_PROVIDER:-openai}
       CG_LLM_PROVIDER: ${CG_LLM_PROVIDER:-openai}

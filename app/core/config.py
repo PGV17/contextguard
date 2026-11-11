@@ -15,6 +15,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET_KEY = "contextguard-development-secret-key-change-me"
 
+# Known placeholder secrets that must never be used in production.
+KNOWN_PLACEHOLDER_SECRETS = (
+    DEFAULT_SECRET_KEY,
+    "change-me-in-production-0123456789abcdef",
+)
+
 EmbeddingProviderName = Literal["openai", "local"]
 LLMProviderName = Literal["openai", "extractive"]
 

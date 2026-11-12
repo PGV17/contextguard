@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import bcrypt
 
+from app.core.exceptions import ValidationFailedError
+
 _ROUNDS = 10
 
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password and return the bcrypt digest."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=_ROUNDS)).decode("utf-8")
+    try:
+        hashed = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt(rounds=_ROUNDS)
+        ).decode("utf-8")
+    except ValueError as exc:
+        raise ValidationFailedError("Password is too long.") from exc
+    return hashed
 
 
 def verify_password(password: str, password_hash: str) -> bool:
